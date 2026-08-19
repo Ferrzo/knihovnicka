@@ -1,0 +1,157 @@
+<div class="app-shell">
+  <header class="top-bar">
+    <div>
+      <p class="eyebrow">PWA • offline-first</p>
+      <h1>Moje knihovna</h1>
+    </div>
+    <div class="status-pills">
+      <span class="pill">{{ collectionCountLabel() }}</span>
+      <span class="pill" [class.offline]="!isOnline()">{{ isOnline() ? 'Online' : 'Offline' }}</span>
+    </div>
+  </header>
+
+  <main class="content-area">
+    @switch (currentView()) {
+      @case ('scanner') {
+        <app-scanner
+          [mode]="scanMode()"
+          (scanned)="handleScannedIsbn($event)"
+          (closed)="openHome()"
+          (manualRequested)="openManualAdd()"
+        />
+      }
+
+      @case ('library') {
+        <app-book-list [books]="books()" (removed)="deleteBook($event)" (closed)="openHome()" />
+      }
+
+      @case ('manual') {
+        <app-manual-add
+          [initialValue]="pendingBook()"
+          (saved)="saveManualBook($event)"
+          (cancelled)="openHome()"
+        />
+      }
+
+      @default {
+        <section class="hero-card">
+          <div class="hero-copy">
+            <p class="hero-kicker">Vaše osobní knihovna v kapse</p>
+            <h2>Skenujte ISBN a hned víte, jestli knihu máte doma.</h2>
+            <p>
+              Vyberte režim, namiřte kameru na čárový kód a aplikace buď knihu uloží, nebo jen
+              lokálně zkontroluje, zda už je v databázi.
+            </p>
+          </div>
+
+          <div class="mode-switch" role="tablist" aria-label="Režim skenování">
+            <button type="button" [class.active]="scanMode() === 'check'" (click)="selectMode('check')">
+              Mám ji?
+            </button>
+            <button type="button" [class.active]="scanMode() === 'add'" (click)="selectMode('add')">
+              Přidat knihu
+            </button>
+          </div>
+
+          <div class="feature-grid">
+            <article>
+              <span>⚡</span>
+              <h3>Rychlá kontrola</h3>
+              <p>Režim „Mám ji?“ používá jen lokální IndexedDB, takže funguje i bez internetu.</p>
+            </article>
+            <article>
+              <span>☁️</span>
+              <h3>Metadata z API</h3>
+              <p>Pro přidání knihy se metadata dohledají přes Google Books s fallbackem na Open Library.</p>
+            </article>
+          </div>
+        </section>
+
+        @if (loadingMetadata()) {
+          <section class="preview-card loading-card">
+            <div class="loader"></div>
+            <div>
+              <h3>Hledám metadata knihy…</h3>
+              <p>Jakmile API odpoví, zobrazíme návrh knihy k uložení.</p>
+            </div>
+          </section>
+        }
+
+        @if (pendingBook(); as book) {
+          <section class="preview-card">
+            <div class="preview-cover">
+              @if (book.coverUrl) {
+                <img [src]="book.coverUrl" [alt]="'Obálka knihy ' + (book.title || 'Bez názvu')" />
+              } @else {
+                <div class="preview-cover-placeholder">📘</div>
+              }
+            </div>
+
+            <div class="preview-content">
+              <p class="eyebrow">Náhled naskenované knihy</p>
+              <h3>{{ book.title || 'Metadata zatím chybí' }}</h3>
+              <p>{{ book.author || 'Autor zatím není známý' }}</p>
+              <p class="isbn">ISBN {{ book.isbn }}</p>
+
+              @if (metadataError()) {
+                <p class="inline-message warning">{{ metadataError() }}</p>
+              }
+
+              <div class="preview-actions">
+                @if (hasPendingMetadata()) {
+                  <button type="button" class="primary-button" (click)="savePendingBook()">
+                    Uložit do knihovny
+                  </button>
+                }
+                <button type="button" class="secondary-button" (click)="openManualAdd(book)">
+                  Upravit ručně
+                </button>
+                <button type="button" class="ghost-button" (click)="discardPendingBook()">Zrušit</button>
+              </div>
+            </div>
+          </section>
+        }
+
+        <section class="manual-shortcut">
+          <div>
+            <h3>Nepovedlo se skenování?</h3>
+            <p>Knihu můžete kdykoliv vyplnit ručně, třeba když kamera nebo metadata selžou.</p>
+          </div>
+          <button type="button" class="secondary-button" (click)="openManualAdd()">Přidat ručně</button>
+        </section>
+      }
+    }
+  </main>
+
+  @if (toastMessage()) {
+    <div class="toast" [class.success]="toastKind() === 'success'" [class.error]="toastKind() === 'error'">
+      {{ toastMessage() }}
+    </div>
+  }
+
+  @if (lookupResult(); as result) {
+    <div class="lookup-overlay" [class.have]="result.hasBook" [class.missing]="!result.hasBook">
+      <div class="overlay-card">
+        <p class="overlay-title">{{ result.hasBook ? 'Mám ji! 📚' : 'Nemám ji 😔' }}</p>
+        <p>ISBN {{ result.isbn }}</p>
+      </div>
+    </div>
+  }
+
+  <nav class="bottom-bar" aria-label="Hlavní akce">
+    <button type="button" class="nav-button" [class.active]="currentView() === 'library'" (click)="openLibrary()">
+      <span class="icon">📚</span>
+      <span>Knihovna</span>
+    </button>
+
+    <button type="button" class="scan-button" (click)="openScanner()">
+      <span class="scan-icon">📷</span>
+      <span>{{ scanActionLabel() }}</span>
+    </button>
+
+    <button type="button" class="nav-button" disabled>
+      <span class="icon">⚙️</span>
+      <span>Nastavení</span>
+    </button>
+  </nav>
+</div>
