@@ -222,16 +222,14 @@ export class ScannerComponent implements AfterViewInit, OnDestroy {
     this.hasReportedResult = false;
 
     try {
-      const devices = await BrowserCodeReader.listVideoInputDevices();
-      this.availableDevices.set(devices);
+      const videoConstraints: MediaTrackConstraints = preferredDeviceId
+        ? { deviceId: { exact: preferredDeviceId } }
+        : { facingMode: { ideal: 'environment' } };
 
-      const deviceId = preferredDeviceId ?? this.pickPreferredCamera(devices);
-      if (!deviceId) {
-        throw new Error('V zařízení nebyla nalezena žádná dostupná kamera.');
-      }
-
-      this.selectedDeviceId.set(deviceId);
-      this.controls = await this.reader.decodeFromVideoDevice(deviceId, this.videoElement?.nativeElement, (result, error) => {
+      this.controls = await this.reader.decodeFromConstraints(
+        { video: videoConstraints, audio: false },
+        this.videoElement?.nativeElement,
+        (result, error) => {
         if (result && !this.hasReportedResult) {
           const isbn = this.normalizeIsbn(result.getText());
 
@@ -249,7 +247,15 @@ export class ScannerComponent implements AfterViewInit, OnDestroy {
         if (error && !(error instanceof NotFoundException)) {
           this.scannerError.set(this.humanizeError(error));
         }
-      });
+        },
+      );
+
+      const devices = await BrowserCodeReader.listVideoInputDevices();
+      this.availableDevices.set(devices);
+      const activeDeviceId = this.videoElement?.nativeElement.srcObject instanceof MediaStream
+        ? this.videoElement.nativeElement.srcObject.getVideoTracks()[0]?.getSettings().deviceId
+        : undefined;
+      this.selectedDeviceId.set(preferredDeviceId ?? activeDeviceId ?? this.pickPreferredCamera(devices));
     } catch (error) {
       this.scannerError.set(this.humanizeError(error));
     } finally {
@@ -280,6 +286,10 @@ export class ScannerComponent implements AfterViewInit, OnDestroy {
     if (error instanceof Error) {
       if (/notallowed|permission/i.test(error.name) || /permission/i.test(error.message)) {
         return 'Přístup ke kameře byl zablokovaný. Povolte kameru a zkuste to znovu.';
+      }
+
+      if (error.name === 'NotSupportedError' && !window.isSecureContext) {
+        return 'Kamera funguje jen přes HTTPS nebo na localhostu. Otevřete aplikaci přes zabezpečené připojení a zkuste to znovu.';
       }
 
       return error.message || 'Kameru se nepodařilo spustit.';
